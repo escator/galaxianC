@@ -4,6 +4,7 @@
 #include <math.h>
 #include <time.h>
 
+// GAME SETTINGS
 #define X_SIZE 60
 #define Y_SIZE 45
 // Максимальное количество одновременно живущих снарядо
@@ -18,18 +19,21 @@
 unsigned int enemy_count = 5;
 // Игровые очки
 unsigned int score = 0;
+
 typedef enum direction {up, down, left, right}direct;
+// Матрица игрового поля
 char matrix[Y_SIZE][X_SIZE];
+// Структура описывающая активный снаряд
 typedef struct bullet {
     bool status;
     int x, y, speed;
     direct bDirection;
-    
 }t_bullet;
-
+// Структура описывающая корабль игрока
 struct ship {
     int x, y, healt;
 }ship;
+// Структура описывающая вражеский корабль
 typedef struct enemyShip {
     int x, y, healt;
     bool status;
@@ -37,11 +41,21 @@ typedef struct enemyShip {
     direct direction_v;
     unsigned int lastFireTime;
 }t_eShip;
+// Структура описывающая чёрный ящик
+typedef struct blackbox {
+    int x, y;
+    bool status;
+    char typeBox;
+}t_blackBox;
+// Буффер активных снарядов
 t_bullet bullets_buf[BULLETS_BUF_SIZE];
+// Буффер активных врагов
 t_eShip enemy_buf[ENEMY_MAX];
+// таймер генерации вражеских кораблей
 unsigned int lastTime;
 // флаг для эффекта движения
 int fl = 0;
+// флаги переключатели
 bool AI_switch = true;
 
 // ------------TEMP--------------
