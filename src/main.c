@@ -19,6 +19,8 @@
 unsigned int enemy_count = 5;
 // Игровые очки
 unsigned int score = 0;
+// Скорость падения blackbox
+#define BLACKBOX_SPEED 1;
 
 typedef enum direction {up, down, left, right}direct;
 // Матрица игрового поля
@@ -48,6 +50,7 @@ struct blackbox {
     int x, y;
     bool status;
     char typeBox;
+    unsigned int lastFireTime;
 }blackBox;
 // Количество моделей blackbox
 #define BLACKBOX_NUM 4
@@ -493,12 +496,16 @@ void createBlackBox(int x, int y) {
     blackBox.y = y;
     blackBox.typeBox = mBox;
     blackBox.status = true;
+    blackBox.lastFireTime = time(NULL) - 1;
 }
 
 void moveBlackBox() {
     if (blackBox.status) {
         if (inGameField_X(blackBox.x) && inGameField_Y(blackBox.y + 1)) {
-            blackBox.y++;
+            if (time(NULL) - blackBox.lastFireTime > 0) {
+                blackBox.y++;
+                blackBox.lastFireTime = time(NULL);
+            }
             putBlackBox();
         } else {
             blackBox.status = false;
