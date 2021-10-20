@@ -23,11 +23,13 @@ unsigned int score = 0;
 typedef enum direction {up, down, left, right}direct;
 // Матрица игрового поля
 char matrix[Y_SIZE][X_SIZE];
+typedef enum owner_enum {PLAYER, ENEMY}t_owner;
 // Структура описывающая активный снаряд
 typedef struct bullet {
     bool status;
     int x, y, speed;
     direct bDirection;
+    t_owner owner;
 }t_bullet;
 // Структура описывающая корабль игрока
 struct ship {
@@ -42,11 +44,15 @@ typedef struct enemyShip {
     unsigned int lastFireTime;
 }t_eShip;
 // Структура описывающая чёрный ящик
-typedef struct blackbox {
+struct blackbox {
     int x, y;
     bool status;
     char typeBox;
-}t_blackBox;
+}blackBox;
+// Количество моделей blackbox
+#define BLACKBOX_NUM 4
+// Модель blackbox
+char blackBoxModel[BLACKBOX_NUM][10] = {"-=HEALT=-", "-=BULLET=-", "-=WEAPON=-", "-=VOLUME=-"};
 // Буффер активных снарядов
 t_bullet bullets_buf[BULLETS_BUF_SIZE];
 // Буффер активных врагов
@@ -97,6 +103,12 @@ void putEnemyShip(int enemyIndex);
 bool checkImpact(int xIn, int yIn, direct direction);
 void destroyEnemyShip(t_eShip *ship);
 void hitAnimation(int x, int y);
+bool inGameField_X(int x);
+bool inGameField_Y(int y);
+void putBlackBox();
+void moveBlackBox();
+void createBlackBox(int x, int y);
+void enableBlackBox();
 
 
 int main(int argc, char const *argv[]) {
@@ -152,6 +164,7 @@ void updateScreen() {
     
     enemyAI();
     moveBullets();
+    moveBlackBox();
 }
 
 void enemyAI() {
@@ -217,6 +230,7 @@ void logicEnemyModule(t_eShip *e_ship) {
     }
 }
 
+// Проверяет столкновение вражеского корабря с объектом по указанной координате
 bool checkImpact(int xIn, int yIn, direct direction) {
     int model[3] = {5, 3, 1};
     bool flag = false;
@@ -255,6 +269,7 @@ void fireEnemy(t_eShip *enemy) {
             bullets_buf[count].speed = 1;
             bullets_buf[count].x = enemy->x + 2;
             bullets_buf[count].y = enemy->y + 3;
+            bullets_buf[count].owner = ENEMY;
         }
         enemy->lastFireTime = time(NULL);
     }
@@ -320,11 +335,13 @@ void putBullet(t_bullet *p) {
             }
         } else if (matrix[p->y][p->x] >= 48 && matrix[p->y][p->x] <= 57) {
             // попадание по врагу
-            int index = matrix[p->y][p->x] - 48;
-            hitAnimation(p->x, p->y);
-            score += 100;
-            enemy_buf[index].healt -= 25;
-            p->status = false;
+            if (p->owner == PLAYER) {
+                int index = matrix[p->y][p->x] - 48;
+                hitAnimation(p->x, p->y);
+                score += 100;
+                enemy_buf[index].healt -= 25;
+                p->status = false;
+            }
         } else if (matrix[p->y][p->x] = '^') {
             // попадание по игроку
             hitAnimation(p->x, p->y);
@@ -334,6 +351,7 @@ void putBullet(t_bullet *p) {
     }
 }
 
+// Анимация попадания. 
 void hitAnimation(int x, int y) {
     char s = 'X';
     if ((x > 2 && x < X_SIZE - 3) && (y > 5 && y < Y_SIZE - 1)) {
@@ -345,6 +363,7 @@ void hitAnimation(int x, int y) {
     }
 }
 
+// Выстрел с корабля игрока
 void fire() {
     int count = 0;
     while (bullets_buf[count].status != false && count < BULLETS_BUF_SIZE) {
@@ -356,6 +375,7 @@ void fire() {
         bullets_buf[count].speed = 1;
         bullets_buf[count].x = ship.x + 3;
         bullets_buf[count].y = Y_SIZE - 1 - 3;
+        bullets_buf[count].owner = PLAYER;
     }
 
 }
@@ -424,6 +444,7 @@ int createEmemyShip() {
 }
 
 void destroyEnemyShip(t_eShip *ship) {
+        if (!blackBox.status) createBlackBox(ship->x, ship->y);
         ship->status = false;
         ship->x = 0;
         ship->y = 0;
@@ -461,6 +482,48 @@ void putEnemyShip(int enemyIndex){
     }
 }
 
+void createBlackBox(int x, int y) {
+    srand(time(NULL));
+    int mBox = rand() % BLACKBOX_NUM;
+    if (x < 1) x = 1;
+    if (x > X_SIZE - 12) x = X_SIZE - 12;
+    if (y < 0) y = 0;
+    if (y > Y_SIZE - 8) y = 8;
+    blackBox.x = x;
+    blackBox.y = y;
+    blackBox.typeBox = mBox;
+    blackBox.status = true;
+}
+
+void moveBlackBox() {
+    if (blackBox.status) {
+        if (inGameField_X(blackBox.x) && inGameField_Y(blackBox.y + 1)) {
+            blackBox.y++;
+            putBlackBox();
+        } else {
+            blackBox.status = false;
+        }
+    }
+}
+
+void putBlackBox() {
+    for (int i = 0; i < 10; i++) {
+        matrix[blackBox.y][blackBox.x + i] = blackBoxModel[blackBox.typeBox][i];
+    }
+}
+
+void enableBlackBox() {
+
+}
+
+bool inGameField_X(int x) {
+    return (x > 0 && x < Y_SIZE - 2);
+}
+
+bool inGameField_Y(int y) {
+    return (y >= 0 && y < Y_SIZE - 1);
+}
+
 /* Генерирует матрицу заполнив ее пробелами
 *  и создает по краям границу с эффектом движения
 */
@@ -494,12 +557,10 @@ void printMatrix() {
     move(0, 0);
     for (int y = 5; y < Y_SIZE; y++) {
         for (int x = 0; x < X_SIZE; x++) {
-           // addch(matrix[y][x]);
            printw("%c", matrix[y][x]);
         }
         printw("\n");
     }
-    // ---- DEBUG ----
     print_info();
     refresh();
 }
