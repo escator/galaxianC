@@ -8,15 +8,13 @@
 #define X_SIZE 60
 #define Y_SIZE 45
 // Максимальное количество одновременно живущих снарядо
-#define BULLETS_BUF_SIZE 10
-// Максимальное количество одновременно живущих врагов
+#define BULLETS_BUF_SIZE 30
+// Максимальное количество одновременно активных врагов
 #define ENEMY_MAX 3
 // Задержка в секундах между генерациями нового врага
 #define WAIT_GEN_ENEMY 3
 // Задержка в секундах между выстрелами врагов
 #define WAIT_NEXT_FIRE 2
-// Количество врагов в стартовом игровом раунде
-unsigned int enemy_count = 5;
 
 // Скорость падения blackbox
 #define BLACKBOX_SPEED 1;
@@ -27,6 +25,12 @@ typedef enum initType {game, level}t_init;
 // Матрица игрового поля
 chtype matrix[Y_SIZE][X_SIZE];
 typedef enum owner_enum {PLAYER, ENEMY}t_owner;
+struct set {
+    // 
+    int enemyActiveMaxNum;
+    // Количество врагов в стартовом игровом раунде
+    unsigned int enemy_count;
+}settingGame;
 // Структура описывающая активный снаряд
 typedef struct bullet {
     bool status;
@@ -61,8 +65,8 @@ struct blackbox {
 char blackBoxModel[BLACKBOX_NUM][10] = {"-=HEALT=- ", "-=BULLET=-", "-=WEAPON=-", "-=VOLUME=-", "-=LIVES=- "};
 // Буффер активных снарядов
 t_bullet bullets_buf[BULLETS_BUF_SIZE];
-// Буффер активных врагов
-t_eShip enemy_buf[ENEMY_MAX];
+// Указатель на Буффер активных врагов
+t_eShip *enemy_buf;
 // таймер генерации вражеских кораблей
 unsigned int lastTime;
 // флаг для эффекта движения
@@ -77,13 +81,7 @@ int d_en_index = 0;
 char d_sym;
 int d_direct = 0;
 
-void print_info() {
-    printw("SCORE\t\t: %d\n", ship.score);
-    printw("HEALT\t\t: %d\n", ship.healt);
-    printw("BULLETS\t\t: %d\n", ship.bullet);
-    printw("LIVES\t\t: %d\n", ship.lives);
-    printw("ENEMY IN WAVE\t:%d\n", enemy_count);
-}
+
 // ------------------------------
 
 void init();
@@ -91,6 +89,7 @@ void initPlayerShip(t_init initType);
 void keyHandler();
 void generationMatrix();
 void printMatrix();
+void print_info();
 void moveShip(int x);
 void updateScreen();
 void fire();
@@ -132,6 +131,71 @@ int main(int argc, char const *argv[]) {
     endwin();
     return 0;
 }
+
+void init() {
+    lastTime = time(NULL);
+    // Setting
+    settingGame.enemy_count = 5;
+    settingGame.enemyActiveMaxNum = ENEMY_MAX;
+
+    enemy_buf = (t_eShip*) malloc(sizeof(t_eShip) * (settingGame.enemyActiveMaxNum));
+    // color init
+    if (has_colors()) {
+        start_color();
+        bkgdset(0);
+        init_pair(red, COLOR_RED, COLOR_BLACK);
+        init_pair(green, COLOR_GREEN, COLOR_BLACK);
+        init_pair(blue, COLOR_BLUE, COLOR_BLACK);
+        init_pair(magenta, COLOR_MAGENTA, COLOR_BLACK);
+        init_pair(yellow, COLOR_YELLOW, COLOR_BLACK);
+        init_pair(cyan, COLOR_CYAN, COLOR_BLACK);
+    }
+    // bullets_buf init
+    for (int i = 0; i < BULLETS_BUF_SIZE; i++) {
+        bullets_buf[i].status = false;
+        bullets_buf[i].bDirection = up;
+        bullets_buf[i].x = 0;
+        bullets_buf[i].y = 0;
+        bullets_buf[i].speed = 0;
+    }
+    // enemy_buf init
+    for (int i = 0; i < settingGame.enemyActiveMaxNum; i++) {
+        enemy_buf[i].x = 0;
+        enemy_buf[i].y = 0;
+        enemy_buf[i].healt = 100;
+        enemy_buf[i].status = false;
+        enemy_buf[i].direction_h = right;
+        enemy_buf[i].direction_v = down;
+    }
+    // game field init
+    generationMatrix();
+    initPlayerShip(game);
+}
+
+int howMuchLiveEnemy() {
+    for (int i = 0; i < settingGame.enemyActiveMaxNum; i++)
+    {
+        /* code */
+    }
+    
+}
+
+void eventHandler() {
+    
+}
+
+void endLevel() {
+
+}
+
+void playerWin() {
+
+}
+
+void playerFail() {
+
+}
+
 void keyHandler() {
     char key = getch();
     switch (key) {
@@ -153,48 +217,6 @@ void keyHandler() {
     default:
         break;
     }
-    // if (key == 'e') isRun = false;
-    // if (key == 'a') ship.x--;
-    // if (key == 'd') ship.x++;
-    // if (key == 's') fire();
-    // if (key == 'i') AI_switch = !AI_switch;
-
-}
-
-void init() {
-    lastTime = time(NULL);
-    // color init
-    if (has_colors()) {
-        start_color();
-        bkgdset(0);
-        init_pair(red, COLOR_RED, COLOR_BLACK);
-        init_pair(green, COLOR_GREEN, COLOR_BLACK);
-        init_pair(blue, COLOR_BLUE, COLOR_BLACK);
-        init_pair(magenta, COLOR_MAGENTA, COLOR_BLACK);
-        init_pair(yellow, COLOR_YELLOW, COLOR_BLACK);
-        init_pair(cyan, COLOR_CYAN, COLOR_BLACK);
-    }
-    // bullets_buf init
-    for (int i = 0; i < BULLETS_BUF_SIZE; i++) {
-        bullets_buf[i].status = false;
-        bullets_buf[i].bDirection = up;
-        bullets_buf[i].x = 0;
-        bullets_buf[i].y = 0;
-        bullets_buf[i].speed = 0;
-    }
-    // enemy_buf init
-    for (int i = 0; i < ENEMY_MAX; i++) {
-        enemy_buf[i].x = 0;
-        enemy_buf[i].y = 0;
-        enemy_buf[i].healt = 100;
-        enemy_buf[i].status = false;
-        enemy_buf[i].direction_h = right;
-        enemy_buf[i].direction_v = down;
-    }
-    // game field init
-    generationMatrix();
-    initPlayerShip(game);
-    
 }
 
 void initPlayerShip(t_init initType) {
@@ -219,7 +241,7 @@ void updateScreen() {
 void enemyAI() {
     // Считаем количество активных врагов и отрисовываем их в матрице
     int count = 0;
-    for (int i = 0; i < ENEMY_MAX; i++) {
+    for (int i = 0; i < settingGame.enemyActiveMaxNum; i++) {
         if (enemy_buf[i].healt < 1) destroyEnemyShip(&enemy_buf[i]);
         if (enemy_buf[i].status) {
             moveEnemyShip(i);
@@ -227,11 +249,11 @@ void enemyAI() {
         }
     }
     // Добавляем вражеские корабли если надо
-    if (count < ENEMY_MAX && enemy_count) {
+    if (count < settingGame.enemyActiveMaxNum && settingGame.enemy_count) {
         createEmemyShip();
     }
 
-    for (int i = 0; i < ENEMY_MAX; i++) {
+    for (int i = 0; i < settingGame.enemyActiveMaxNum; i++) {
         // основная логика для кораблей врага
         if (enemy_buf[i].status) {
         fireEnemy(&enemy_buf[i]);
@@ -468,7 +490,7 @@ int createEmemyShip() {
         return -99;
     }
     lastTime = time(NULL);
-    for (int i = 0; i < ENEMY_MAX; i++) {
+    for (int i = 0; i < settingGame.enemyActiveMaxNum; i++) {
         if (!enemy_buf[i].status) {
             index = i;
             break;
@@ -511,7 +533,7 @@ void destroyEnemyShip(t_eShip *ship) {
         ship->healt = 100;
         ship->direction_h = right;
         ship->direction_v = down;
-        if (enemy_count) enemy_count--;
+        if (settingGame.enemy_count) settingGame.enemy_count--;
 }
 
 /* Функция перемещает вражеский корабль с индексом в 
@@ -667,4 +689,12 @@ void printMatrix() {
     }
     print_info();
     refresh();
+}
+
+void print_info() {
+    printw("SCORE\t\t: %d\n", ship.score);
+    printw("HEALT\t\t: %d\n", ship.healt);
+    printw("BULLETS\t\t: %d\n", ship.bullet);
+    printw("LIVES\t\t: %d\n", ship.lives);
+    printw("ENEMY IN WAVE\t:%d\n", settingGame.enemy_count);
 }
