@@ -52,7 +52,7 @@ typedef struct enemyShip {
 struct blackbox {
     int x, y;
     bool status;
-    char typeBox;
+    int typeBox;
     unsigned int lastStepTime;
 }blackBox;
 // Количество моделей blackbox
@@ -203,7 +203,7 @@ void initPlayerShip(t_init initType) {
         ship.score = 0;
     }
     ship.healt = 1000;
-    ship.bullet = 1000;
+    ship.bullet = 200;
     moveShip(X_SIZE / 2 - 3);
 }
 
@@ -592,7 +592,29 @@ void putBlackBox(palette mColor) {
 
 void enableBlackBox() {
     putBlackBox(green);
-    ship.bullet += 1000;
+    switch (blackBox.typeBox) {
+    case 0:
+        // healt
+        ship.healt += 200;
+        break;
+    case 1:
+        // bullets
+        ship.bullet += 100;
+        break;
+    case 2:
+        // weapon
+        break;
+    case 3:
+        // volume
+        break;
+    case 4:
+        // lives
+        ship.lives++;
+        break;
+    
+    default:
+        break;
+    }
     blackBox.status = false;
 
 }
