@@ -9,20 +9,21 @@
 #define Y_SIZE 45
 // Максимальное количество одновременно живущих снарядо
 #define BULLETS_BUF_SIZE 10
-// Максимальное количество одновременно живущих целей
+// Максимальное количество одновременно живущих врагов
 #define ENEMY_MAX 3
-// Сколько секунд задержка до генерации нового врага
+// Задержка в секундах между генерациями нового врага
 #define WAIT_GEN_ENEMY 3
 // Задержка в секундах между выстрелами врагов
 #define WAIT_NEXT_FIRE 2
-// Количество врагов в игровом раунде
+// Количество врагов в стартовом игровом раунде
 unsigned int enemy_count = 5;
-// Игровые очки
-unsigned int score = 0;
+
 // Скорость падения blackbox
 #define BLACKBOX_SPEED 1;
 
+typedef enum palette {default_palette, red, green, blue, yellow, magenta, cyan}palette;
 typedef enum direction {up, down, left, right}direct;
+typedef enum initType {game, level}t_init;
 // Матрица игрового поля
 chtype matrix[Y_SIZE][X_SIZE];
 typedef enum owner_enum {PLAYER, ENEMY}t_owner;
@@ -35,7 +36,9 @@ typedef struct bullet {
 }t_bullet;
 // Структура описывающая корабль игрока
 struct ship {
-    int x, y, healt;
+    int x, y, healt, bullet, lives;
+    // Игровые очки
+    unsigned int score;
 }ship;
 // Структура описывающая вражеский корабль
 typedef struct enemyShip {
@@ -50,12 +53,12 @@ struct blackbox {
     int x, y;
     bool status;
     char typeBox;
-    unsigned int lastFireTime;
+    unsigned int lastStepTime;
 }blackBox;
 // Количество моделей blackbox
-#define BLACKBOX_NUM 4
+#define BLACKBOX_NUM 5
 // Модель blackbox
-char blackBoxModel[BLACKBOX_NUM][10] = {"-=HEALT=-", "-=BULLET=-", "-=WEAPON=-", "-=VOLUME=-"};
+char blackBoxModel[BLACKBOX_NUM][10] = {"-=HEALT=- ", "-=BULLET=-", "-=WEAPON=-", "-=VOLUME=-", "-=LIVES=- "};
 // Буффер активных снарядов
 t_bullet bullets_buf[BULLETS_BUF_SIZE];
 // Буффер активных врагов
@@ -66,7 +69,7 @@ unsigned int lastTime;
 int fl = 0;
 // флаги переключатели
 bool AI_switch = true;
-
+bool isRun = true;
 // ------------TEMP--------------
 // global for debug
 bool d_hits = 0;
@@ -75,19 +78,17 @@ char d_sym;
 int d_direct = 0;
 
 void print_info() {
-    printw("Healt: %d\n", ship.healt);
-    printw("enemy yet:%d\n", enemy_count);
-    printw("SCORE: %d\n", score);
-    // printw("direct: %d\n", d_direct);
-    // printw("enm.x: %d\n", enemy_buf[0].x);
-    // printw("enm.y: %d\n", enemy_buf[0].y);
-    // printw("direction_h: %d\n", enemy_buf[0].direction_h);
-    // printw("direction_v: %d\n", enemy_buf[0].direction_v);
-    // printw("status: %d\n", enemy_buf[0].status);
+    printw("SCORE\t\t: %d\n", ship.score);
+    printw("HEALT\t\t: %d\n", ship.healt);
+    printw("BULLETS\t\t: %d\n", ship.bullet);
+    printw("LIVES\t\t: %d\n", ship.lives);
+    printw("ENEMY IN WAVE\t:%d\n", enemy_count);
 }
 // ------------------------------
 
 void init();
+void initPlayerShip(t_init initType);
+void keyHandler();
 void generationMatrix();
 void printMatrix();
 void moveShip(int x);
@@ -108,7 +109,7 @@ void destroyEnemyShip(t_eShip *ship);
 void hitAnimation(int x, int y);
 bool inGameField_X(int x);
 bool inGameField_Y(int y);
-void putBlackBox();
+void putBlackBox(palette mColor);
 void moveBlackBox();
 void createBlackBox(int x, int y);
 void enableBlackBox();
@@ -117,7 +118,6 @@ void enableBlackBox();
 int main(int argc, char const *argv[]) {
     // printf("START\n");
     int err = 0;
-    bool isRun = true;
     initscr();
     init ();
     halfdelay(1);
@@ -125,23 +125,56 @@ int main(int argc, char const *argv[]) {
 
 
         printMatrix();
-        char key = getch();
-        if (key == 'e') isRun = false;
-        if (key == 'a') ship.x--;
-        if (key == 'd') ship.x++;
-        if (key == 's') fire();
-        if (key == 'i') AI_switch = !AI_switch;
-
+        keyHandler();
         updateScreen();    
     } while(isRun);
 
     endwin();
     return 0;
 }
+void keyHandler() {
+    char key = getch();
+    switch (key) {
+    case 'e':
+        isRun = false;
+        break;
+    case 'a':
+        ship.x--;
+        break;
+    case 'd':
+        ship.x++;
+    break;
+    case 's':
+        fire();
+    break;
+    case 'i':
+        AI_switch = !AI_switch;
+    break;
+    default:
+        break;
+    }
+    // if (key == 'e') isRun = false;
+    // if (key == 'a') ship.x--;
+    // if (key == 'd') ship.x++;
+    // if (key == 's') fire();
+    // if (key == 'i') AI_switch = !AI_switch;
+
+}
 
 void init() {
     lastTime = time(NULL);
-    ship.healt = 1000;
+    // color init
+    if (has_colors()) {
+        start_color();
+        bkgdset(0);
+        init_pair(red, COLOR_RED, COLOR_BLACK);
+        init_pair(green, COLOR_GREEN, COLOR_BLACK);
+        init_pair(blue, COLOR_BLUE, COLOR_BLACK);
+        init_pair(magenta, COLOR_MAGENTA, COLOR_BLACK);
+        init_pair(yellow, COLOR_YELLOW, COLOR_BLACK);
+        init_pair(cyan, COLOR_CYAN, COLOR_BLACK);
+    }
+    // bullets_buf init
     for (int i = 0; i < BULLETS_BUF_SIZE; i++) {
         bullets_buf[i].status = false;
         bullets_buf[i].bDirection = up;
@@ -149,6 +182,7 @@ void init() {
         bullets_buf[i].y = 0;
         bullets_buf[i].speed = 0;
     }
+    // enemy_buf init
     for (int i = 0; i < ENEMY_MAX; i++) {
         enemy_buf[i].x = 0;
         enemy_buf[i].y = 0;
@@ -157,7 +191,19 @@ void init() {
         enemy_buf[i].direction_h = right;
         enemy_buf[i].direction_v = down;
     }
+    // game field init
     generationMatrix();
+    initPlayerShip(game);
+    
+}
+
+void initPlayerShip(t_init initType) {
+    if (!initType) {
+        ship.lives = 3;
+        ship.score = 0;
+    }
+    ship.healt = 1000;
+    ship.bullet = 1000;
     moveShip(X_SIZE / 2 - 3);
 }
 
@@ -318,14 +364,15 @@ int isHits(t_bullet *p) {
 
 /* Отрисовывает в матрице информацию о новом положении снаряда
 *  '*' снаряд продолжает полет
-*  'X' произошло попадание в любое препятствие
+*  если произошло попадание в любое препятствие воспроизводится
+*  анимация и обработка попадания, после чего снаряд уничтожается
 */
 void putBullet(t_bullet *p) {
     if (((p->x) > 0 && (p->x) < X_SIZE-2) && ((p->y) >= 0 && (p->y) < Y_SIZE)) {
         if (matrix[p->y][p->x] == ' ') {
             // нет попадания
-            matrix[p->y][p->x] = '*';
-        } else if (matrix[p->y][p->x] == '*') {
+            matrix[p->y][p->x] = '*' | A_BOLD;
+        } else if ((char) matrix[p->y][p->x] == '*') {
             // попадание в снаряд
             hitAnimation(p->x, p->y);
             for (int i = 0; i < BULLETS_BUF_SIZE; i++) {
@@ -336,16 +383,16 @@ void putBullet(t_bullet *p) {
                     }
                 }
             }
-        } else if (matrix[p->y][p->x] >= 48 && matrix[p->y][p->x] <= 57) {
+        } else if ((char) matrix[p->y][p->x] >= 48 && (char) matrix[p->y][p->x] <= 57) {
             // попадание по врагу
             if (p->owner == PLAYER) {
-                int index = matrix[p->y][p->x] - 48;
+                int index = (char) matrix[p->y][p->x] - 48;
                 hitAnimation(p->x, p->y);
-                score += 100;
+                ship.score += 100;
                 enemy_buf[index].healt -= 25;
                 p->status = false;
             }
-        } else if (matrix[p->y][p->x] = '^') {
+        } else if ((char) matrix[p->y][p->x] == '^') {
             // попадание по игроку
             hitAnimation(p->x, p->y);
             ship.healt -= 50;
@@ -356,7 +403,7 @@ void putBullet(t_bullet *p) {
 
 // Анимация попадания. 
 void hitAnimation(int x, int y) {
-    char s = 'X';
+    chtype s = 'X' | COLOR_PAIR(red) | A_BOLD;
     if ((x > 2 && x < X_SIZE - 3) && (y > 5 && y < Y_SIZE - 1)) {
         matrix[y][x] = s;
         matrix[y - 1][x - 1] = s;
@@ -372,30 +419,40 @@ void fire() {
     while (bullets_buf[count].status != false && count < BULLETS_BUF_SIZE) {
         count++;
     }
-    if (count < BULLETS_BUF_SIZE) {
+    if (count < BULLETS_BUF_SIZE && ship.bullet) {
         bullets_buf[count].status = true;
         bullets_buf[count].bDirection = up;
         bullets_buf[count].speed = 1;
         bullets_buf[count].x = ship.x + 3;
         bullets_buf[count].y = Y_SIZE - 1 - 3;
         bullets_buf[count].owner = PLAYER;
+        ship.bullet--;
     }
 
 }
 
 void moveShip(int x) {
     char sym = '^';
+    chtype sym_c;
+    // красим в зависимости от уровня здороиья
+    if (ship.healt < 201)
+        sym_c = sym | COLOR_PAIR(red);
+    else if (ship.healt < 600 && ship.healt > 200)
+        sym_c = sym | COLOR_PAIR(yellow);
+    else
+        sym_c = sym | COLOR_PAIR(green);
     int model[4] = {7, 5, 3, 1};
     if (x < 1) {
         x = 1;
     } else if (x > X_SIZE - 1 - model[0]) {
         x = X_SIZE - 1 - model[0];
     } 
+    // пишем в матрицу
     ship.x = x;
     ship.y = 0;
     for (int y = 0; y < 4; y++) {
         for (int i = 0; i < model[y]; i++) {
-            matrix[Y_SIZE - 1 - y][x + i + y] = sym;
+            matrix[Y_SIZE - 1 - y][x + i + y] = sym_c | A_BOLD;
         }
     }
 }
@@ -477,10 +534,19 @@ void moveEnemyShip(int enemyIndex) {
     
 }
 void putEnemyShip(int enemyIndex){
+    char sym = 48 + enemyIndex;
+    chtype sym_c;
+    if (enemy_buf[enemyIndex].healt < 31) {
+        sym_c = sym | COLOR_PAIR(red);
+    } else if (enemy_buf[enemyIndex].healt < 61 && enemy_buf[enemyIndex].healt > 30) {
+        sym_c = sym | COLOR_PAIR(yellow);
+    } else {
+        sym_c = sym | COLOR_PAIR(green);
+    }
     int model[3] = {5, 3, 1};
     for (int y = 0; y < 3; y++) {
         for (int i = 0; i < model[y]; i++) {
-            matrix[enemy_buf[enemyIndex].y + y][enemy_buf[enemyIndex].x + i + y] = 48 + enemyIndex;
+            matrix[enemy_buf[enemyIndex].y + y][enemy_buf[enemyIndex].x + i + y] = sym_c;
         }
     }
 }
@@ -496,30 +562,38 @@ void createBlackBox(int x, int y) {
     blackBox.y = y;
     blackBox.typeBox = mBox;
     blackBox.status = true;
-    blackBox.lastFireTime = time(NULL) - 1;
+    blackBox.lastStepTime = time(NULL) - 1;
 }
 
 void moveBlackBox() {
     if (blackBox.status) {
         if (inGameField_X(blackBox.x) && inGameField_Y(blackBox.y + 1)) {
-            if (time(NULL) - blackBox.lastFireTime > 0) {
+            if (time(NULL) - blackBox.lastStepTime > 0) {
                 blackBox.y++;
-                blackBox.lastFireTime = time(NULL);
+                blackBox.lastStepTime = time(NULL);
             }
-            putBlackBox();
+            if (blackBox.y > Y_SIZE - 5) {
+                if (ship.x > blackBox.x - 3 && ship.x < blackBox.x + 10) {
+                    enableBlackBox();
+                }
+            }
+            putBlackBox(magenta);
         } else {
             blackBox.status = false;
         }
     }
 }
 
-void putBlackBox() {
+void putBlackBox(palette mColor) {
     for (int i = 0; i < 10; i++) {
-        matrix[blackBox.y][blackBox.x + i] = blackBoxModel[blackBox.typeBox][i];
+        matrix[blackBox.y][blackBox.x + i] = blackBoxModel[blackBox.typeBox][i] | COLOR_PAIR(mColor);
     }
 }
 
 void enableBlackBox() {
+    putBlackBox(green);
+    ship.bullet += 1000;
+    blackBox.status = false;
 
 }
 
