@@ -24,7 +24,7 @@ unsigned int score = 0;
 
 typedef enum direction {up, down, left, right}direct;
 // Матрица игрового поля
-char matrix[Y_SIZE][X_SIZE];
+chtype matrix[Y_SIZE][X_SIZE];
 typedef enum owner_enum {PLAYER, ENEMY}t_owner;
 // Структура описывающая активный снаряд
 typedef struct bullet {
@@ -564,7 +564,8 @@ void printMatrix() {
     move(0, 0);
     for (int y = 5; y < Y_SIZE; y++) {
         for (int x = 0; x < X_SIZE; x++) {
-           printw("%c", matrix[y][x]);
+           addch(matrix[y][x]);
+           // printw("%c", matrix[y][x]);
         }
         printw("\n");
     }
