@@ -3,6 +3,7 @@
 #include <stdlib.h>
 #include <math.h>
 #include <time.h>
+#include <string.h>
 
 // GAME SETTINGS
 #define X_SIZE 60
@@ -19,17 +20,32 @@
 // Скорость падения blackbox
 #define BLACKBOX_SPEED 1;
 
+/* Массив описывающий уровни
+* level {enemy_count, enemyActiveMaxNum, waitBetweenEnemyFire, waitBetweenEnemyGen}
+*
+*/
+int levels[4][5] = {
+    {5, 3, 2, 5},
+    {8, 4, 2, 3},
+    {10, 4, 1, 3},
+    {12, 5, 1, 2}
+};
+
 typedef enum palette {default_palette, red, green, blue, yellow, magenta, cyan}palette;
 typedef enum direction {up, down, left, right}direct;
 typedef enum initType {game, level}t_init;
 // Матрица игрового поля
 chtype matrix[Y_SIZE][X_SIZE];
 typedef enum owner_enum {PLAYER, ENEMY}t_owner;
+// Структура описывающая текущие установки игры
 struct set {
-    // 
-    int enemyActiveMaxNum;
-    // Количество врагов в стартовом игровом раунде
-    unsigned int enemy_count;
+    unsigned int enemy_count;   // Общее количество врагов в стартовом игровом раунде
+    int enemyActiveMaxNum;      // Количество одновременно активных врагов
+    int waitBetweenEnemyFire;   // Пауза между выстрелами врагов, сек.
+    int waitBetweenEnemyGen;    // Пауза между генерацией нового врага, сек.
+    int bulletBufferSize;       // Максимальное количество отслеживаемых активных снарядов
+    int cLevel;
+
 }settingGame;
 // Структура описывающая активный снаряд
 typedef struct bullet {
@@ -64,9 +80,9 @@ struct blackbox {
 // Модель blackbox
 char blackBoxModel[BLACKBOX_NUM][10] = {"-=HEALT=- ", "-=BULLET=-", "-=WEAPON=-", "-=VOLUME=-", "-=LIVES=- "};
 // Буффер активных снарядов
-t_bullet bullets_buf[BULLETS_BUF_SIZE];
+t_bullet *bullets_buf = NULL;
 // Указатель на Буффер активных врагов
-t_eShip *enemy_buf;
+t_eShip *enemy_buf = NULL;
 // таймер генерации вражеских кораблей
 unsigned int lastTime;
 // флаг для эффекта движения
@@ -74,6 +90,7 @@ int fl = 0;
 // флаги переключатели
 bool AI_switch = true;
 bool isRun = true;
+bool isPause = true;
 // ------------TEMP--------------
 // global for debug
 bool d_hits = 0;
@@ -86,7 +103,11 @@ int d_direct = 0;
 
 void init();
 void initPlayerShip(t_init initType);
+void initEnemyBuffer();
+void initBulletBuffer();
+void getLevelSetting();
 void keyHandler();
+void eventHandler();
 void generationMatrix();
 void printMatrix();
 void print_info();
@@ -98,7 +119,6 @@ void putBullet(t_bullet *p);
 void moveEnemyShip(int enemyIndex);
 void moveShip(int x);
 void enemyAI();
-int isHits(t_bullet *p);
 int createEmemyShip();
 void logicEnemyModule(t_eShip *ship);
 void fireEnemy(t_eShip *enemy);
@@ -112,7 +132,12 @@ void putBlackBox(palette mColor);
 void moveBlackBox();
 void createBlackBox(int x, int y);
 void enableBlackBox();
-
+void restartLevel();
+void nextLevel();
+void exitGame();
+void playerFail();
+void playerWin();
+void pauseGame();
 
 int main(int argc, char const *argv[]) {
     // printf("START\n");
@@ -122,12 +147,14 @@ int main(int argc, char const *argv[]) {
     halfdelay(1);
     do {
 
-
+        eventHandler();
         printMatrix();
         keyHandler();
-        updateScreen();    
+        updateScreen();
+        if (isPause) pauseGame();    
     } while(isRun);
 
+    exitGame();
     endwin();
     return 0;
 }
@@ -135,10 +162,9 @@ int main(int argc, char const *argv[]) {
 void init() {
     lastTime = time(NULL);
     // Setting
-    settingGame.enemy_count = 5;
-    settingGame.enemyActiveMaxNum = ENEMY_MAX;
-
-    enemy_buf = (t_eShip*) malloc(sizeof(t_eShip) * (settingGame.enemyActiveMaxNum));
+    getLevelSetting(0);
+    initEnemyBuffer();
+    initBulletBuffer();
     // color init
     if (has_colors()) {
         start_color();
@@ -150,15 +176,27 @@ void init() {
         init_pair(yellow, COLOR_YELLOW, COLOR_BLACK);
         init_pair(cyan, COLOR_CYAN, COLOR_BLACK);
     }
-    // bullets_buf init
-    for (int i = 0; i < BULLETS_BUF_SIZE; i++) {
-        bullets_buf[i].status = false;
-        bullets_buf[i].bDirection = up;
-        bullets_buf[i].x = 0;
-        bullets_buf[i].y = 0;
-        bullets_buf[i].speed = 0;
-    }
+    
+    
+    // game field init
+    generationMatrix();
+    initPlayerShip(game);
+}
+void getLevelSetting(int levelNumb) {
+    settingGame.cLevel = levelNumb;
+    settingGame.enemy_count = levels[levelNumb][0];
+    settingGame.enemyActiveMaxNum = levels[levelNumb][1];
+    settingGame.waitBetweenEnemyFire = levels[levelNumb][2];
+    settingGame.waitBetweenEnemyGen = levels[levelNumb][3];
+    settingGame.bulletBufferSize = BULLETS_BUF_SIZE;
+}
+
+void initEnemyBuffer() {
     // enemy_buf init
+    if (enemy_buf != NULL) {
+        free(enemy_buf);
+    }
+    enemy_buf = (t_eShip*) malloc(sizeof(t_eShip) * (settingGame.enemyActiveMaxNum));
     for (int i = 0; i < settingGame.enemyActiveMaxNum; i++) {
         enemy_buf[i].x = 0;
         enemy_buf[i].y = 0;
@@ -167,25 +205,67 @@ void init() {
         enemy_buf[i].direction_h = right;
         enemy_buf[i].direction_v = down;
     }
-    // game field init
-    generationMatrix();
-    initPlayerShip(game);
+}
+
+void initBulletBuffer() {
+    // bullets_buf init
+    if (bullets_buf != NULL) {
+        free(bullets_buf);
+    }
+    bullets_buf = (t_bullet*) malloc(sizeof(t_bullet) * (settingGame.bulletBufferSize));
+    for (int i = 0; i < settingGame.bulletBufferSize; i++) {
+        bullets_buf[i].status = false;
+        bullets_buf[i].bDirection = up;
+        bullets_buf[i].x = 0;
+        bullets_buf[i].y = 0;
+        bullets_buf[i].speed = 0;
+    }
 }
 
 int howMuchLiveEnemy() {
-    for (int i = 0; i < settingGame.enemyActiveMaxNum; i++)
-    {
-        /* code */
+    int count = 0;
+    for (int i = 0; i < settingGame.enemyActiveMaxNum; i++) {
+        if (enemy_buf[i].status) count++;
     }
-    
+    return count;
+}
+
+void exitGame() {
+    // освобождаем память
+    if (bullets_buf != NULL) {
+        free(bullets_buf);
+        bullets_buf = NULL;
+    }
+    if (enemy_buf != NULL) {
+        free(enemy_buf);
+        enemy_buf = NULL;
+    }
 }
 
 void eventHandler() {
-    
+    if (ship.healt < 1 && !ship.lives) {
+        // Конец игры Игрок проиграл
+        playerFail();
+    } else if(ship.healt < 1 && ship.lives) {
+        // Игрок погиб и потерял одну жизнь
+        ship.healt--;
+        restartLevel();
+    } else if (!howMuchLiveEnemy() && !settingGame.enemy_count && ship.healt > 0) {
+        nextLevel();
+    }
 }
 
-void endLevel() {
+void restartLevel() {
+    initBulletBuffer();
+    initEnemyBuffer();
+    getLevelSetting(settingGame.cLevel);
+    initPlayerShip(level);
+    isPause = true;
+}
 
+void nextLevel() {
+    settingGame.cLevel++;
+    restartLevel();
 }
 
 void playerWin() {
@@ -214,8 +294,23 @@ void keyHandler() {
     case 'i':
         AI_switch = !AI_switch;
     break;
+    case 'p':
+        isPause = !isPause;
+    break;
     default:
         break;
+    }
+}
+
+void pauseGame() {
+    char str[] = "Нажмите пробел для старта";
+    matrix[Y_SIZE - 10][(X_SIZE - strlen(str)) / 2];
+    updateScreen();
+    
+    char key;
+    while (isPause) {
+        key = getch();
+        if (key == ' ') isPause = false;
     }
 }
 
@@ -329,7 +424,7 @@ bool checkImpact(int xIn, int yIn, direct direction) {
 }
 
 void fireEnemy(t_eShip *enemy) {
-    if (enemy->status && (time(NULL) - enemy->lastFireTime > WAIT_NEXT_FIRE)) {
+    if (enemy->status && (time(NULL) - enemy->lastFireTime > settingGame.waitBetweenEnemyFire)) {
         int count = 0;
         while (bullets_buf[count].status != false && count < BULLETS_BUF_SIZE) {
             count++;
@@ -370,18 +465,6 @@ void moveBullets() {
             putBullet(&bullets_buf[i]);            
         }
     }
-}
-
-int isHits(t_bullet *p) {
-    bool hit = false;
-    if (p->bDirection == up) {
-        if (matrix[p->x][(p->y)] == 'X') hit = true;
-        
-    }
-    if (p->bDirection == down) {
-        if (matrix[p->x][p->y] == 'X') hit = true;
-    }
-    return hit;
 }
 
 /* Отрисовывает в матрице информацию о новом положении снаряда
@@ -696,5 +779,6 @@ void print_info() {
     printw("HEALT\t\t: %d\n", ship.healt);
     printw("BULLETS\t\t: %d\n", ship.bullet);
     printw("LIVES\t\t: %d\n", ship.lives);
+    printw("LEVEL\t\t: %d\n", settingGame.cLevel);
     printw("ENEMY IN WAVE\t:%d\n", settingGame.enemy_count);
 }
